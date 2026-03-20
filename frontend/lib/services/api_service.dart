@@ -4,14 +4,14 @@ import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart';
 
 class ApiService {
-  // Ensure this matches your Flask terminal output (192.168.x.x or 127.0.0.1)
+  // Use your static IP for physical device testing
   static const String baseUrl = 'http://192.168.254.101:5000';
 
+  // --- MODE: Baybayin to Tagalog (SVM + HOG + Image) ---
   Future<String> uploadAndTranslate(XFile imageFile, String mode) async {
     try {
       var request = http.MultipartRequest('POST', Uri.parse('$baseUrl/api/translate'));
       
-      // Read bytes (Works on both Web and Mobile)
       var bytes = await imageFile.readAsBytes();
       
       request.files.add(http.MultipartFile.fromBytes(
@@ -36,6 +36,28 @@ class ApiService {
       return "Connection Error: $e";
     }
   }
+
+  // --- MODE: Tagalog to Baybayin (Linguistic Rule-Based) ---
+  // This sends JSON text instead of a file
+  Future<String> translateTagalogToBaybayin(String tagalogText) async {
+  try {
+    final response = await http.post(
+      Uri.parse('$baseUrl/api/translate'), // Changed from /api/ttb
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'text': tagalogText,
+        'mode': 'Tagalog to Baybayin' // Tell Flask which logic to use
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      // Ensure this matches the key 'translated_text' in your Flask response
+      return data['translated_text'] ?? "Translation failed"; 
+    } 
+    return "Server Error: ${response.statusCode}";
+  } catch (e) {
+    return "Connection Error: $e";
+  }
 }
-
-
+}

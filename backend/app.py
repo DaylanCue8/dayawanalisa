@@ -4,6 +4,9 @@ import joblib
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from skimage.feature import hog
+from tagalog_to_baybayin import TagalogToBaybayin
+
+ttb_translator = TagalogToBaybayin()
 
 app = Flask(__name__)
 CORS(app)
@@ -87,22 +90,38 @@ def preprocess_and_predict(image_bytes):
 
 @app.route('/api/translate', methods=['POST'])
 def translate():
-    if 'file' not in request.files:
-        return jsonify({"error": "No file"}), 400
-    
-    file = request.files['file']
-    mode = request.form.get('mode', 'Default')
+    # 1. Determine the mode (Check Form-data first, then JSON)
+    mode = request.form.get('mode') or (request.json.get('mode') if request.is_json else 'Baybayin to Tagalog')
     
     try:
-        image_bytes = file.read()
-        translated_text = preprocess_and_predict(image_bytes)
-        
+        # --- MODE A: IMAGE RECOGNITION (Baybayin to Tagalog) ---
+        if mode == 'Baybayin to Tagalog':
+            if 'file' not in request.files:
+                return jsonify({"error": "No image provided"}), 400
+            
+            image_bytes = request.files['file'].read()
+            result = preprocess_and_predict(image_bytes) 
+            
+        # --- MODE B: TEXT TRANSLATION (Tagalog to Baybayin) ---
+        elif mode == 'Tagalog to Baybayin':
+            # Check if text is coming from form-data or JSON body
+            tagalog_text = request.form.get('text') or (request.json.get('text') if request.is_json else '')
+            
+            if not tagalog_text:
+                return jsonify({"error": "No text provided"}), 400
+                
+            result = ttb_translator.translate(tagalog_text)
+            
+        else:
+            result = "Mode not yet implemented"
+
         return jsonify({
-            "translated_text": translated_text if translated_text else "No text detected",
+            "translated_text": result if result else "No result",
             "status": "success"
         })
+        
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Error during {mode}: {e}")
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
