@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/api_service.dart';
 import '../widgets/info_modal.dart';
+import '../widgets/evaluation_modal.dart';
 
 class DayawLandingScreen extends StatefulWidget {
   const DayawLandingScreen({super.key});
@@ -51,21 +52,57 @@ class _DayawLandingScreenState extends State<DayawLandingScreen> {
     if (photo != null) {
       final bytes = await photo.readAsBytes();
 
+      // STEP 1: Show "Processing" state first
       setState(() {
         _isLoading = true;
         _webImage = bytes;
         _translatedResult = "Processing Image...";
       });
 
-      final result = await _apiService.uploadAndTranslate(photo, selectedMode);
+      // STEP 2: Wait for the API to actually process the image
+      final response = await _apiService.uploadAndTranslateDetailed(photo, selectedMode);
 
+      // STEP 3: Update the UI with the result FIRST
       setState(() {
-        _translatedResult = result;
         _isLoading = false;
+        if (response != null) {
+          _translatedResult = response['translated_text'] ?? "No result";
+        } else {
+          _translatedResult = "Error: Connection Failed";
+        }
       });
+
+      // STEP 4: Small delay to let the user see the result on the main screen
+      // Then open the modal if the status is correct
+      if (response != null) {
+        String status = response['status']?.toString().toLowerCase() ?? "";
+        
+        if (status == 'success' || status == 'low_confidence') {
+          // Future.delayed ensures the UI has finished its last build cycle
+          Future.delayed(const Duration(milliseconds: 500), () {
+            if (mounted) {
+              _showEvaluation(response);
+            }
+          });
+        }
+      }
     }
   }
 
+  // Helper function to trigger the Evaluation Modal
+  void _showEvaluation(Map<String, dynamic> data) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent, // Allows for the rounded top corners
+      builder: (context) => EvaluationModal(
+        detections: data['individual_detections'] ?? [],
+        averageConfidence: (data['confidence'] as num).toDouble(),
+        translatedText: data['translated_text'] ?? "",
+      ),
+    );
+  }
+  
   @override
   Widget build(BuildContext context) {
     return Scaffold(

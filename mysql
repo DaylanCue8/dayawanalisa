@@ -1,0 +1,40 @@
+-- 1. Create the Database (Optional if you already have one)
+CREATE DATABASE IF NOT EXISTS dayaw;
+USE dayaw;
+
+-- 2. Processing Sessions Table
+-- Tracks the lifecycle of every image upload/request
+CREATE TABLE IF NOT EXISTS processing_sessions (
+    session_id VARCHAR(50) PRIMARY KEY, -- Unique String (e.g., SESS_12345)
+    start_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    end_time TIMESTAMP NULL,
+    status ENUM('Processing', 'Success', 'Failed', 'Low_Confidence') DEFAULT 'Processing',
+    device_info VARCHAR(100), -- Android, iOS, or Emulator
+    ip_address VARCHAR(45) -- For Security/Rate Limiting requirements
+) ENGINE=InnoDB;
+
+-- 3. Recognition Logs Table
+-- Stores the HOG/SVM technical results for each session
+CREATE TABLE IF NOT EXISTS recognition_logs (
+    log_id INT AUTO_INCREMENT PRIMARY KEY,
+    session_id VARCHAR(50),
+    detected_char VARCHAR(10), -- The predicted Baybayin label
+    confidence_score DECIMAL(5, 4), -- e.g., 0.9542
+    inference_time DECIMAL(10, 3), -- Time in seconds (e.g., 1.245)
+    processed_image_path VARCHAR(255), -- Path to the 42x42 cleaned image
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_session
+        FOREIGN KEY (session_id) 
+        REFERENCES processing_sessions(session_id)
+        ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- 4. Model Metadata Table
+-- Tracks the version of the SVM model (.sav file) used
+CREATE TABLE IF NOT EXISTS model_metadata (
+    version_id VARCHAR(20) PRIMARY KEY, -- e.g., "v1.0-Linear"
+    training_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    total_samples INT, -- Number of augmented images used for training
+    accuracy_score DECIMAL(5, 2), -- e.g., 92.50
+    kernel_type VARCHAR(20) DEFAULT 'Linear'
+) ENGINE=InnoDB;
