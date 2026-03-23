@@ -89,6 +89,50 @@ class _DayawLandingScreenState extends State<DayawLandingScreen> {
     }
   }
 
+  Future<void> _captureFromCamera() async {
+  final XFile? photo = await _picker.pickImage(
+    source: ImageSource.camera,
+    imageQuality: 85, // compress a bit for faster upload
+  );
+
+  if (photo != null) {
+    final bytes = await photo.readAsBytes();
+
+    // Show loading + preview
+    setState(() {
+      _isLoading = true;
+      _webImage = bytes;
+      _translatedResult = "Processing Image...";
+    });
+
+    // Send to API
+    final response = await _apiService.uploadAndTranslateDetailed(photo, selectedMode);
+
+    // Update UI
+    setState(() {
+      _isLoading = false;
+      if (response != null) {
+        _translatedResult = response['translated_text'] ?? "No result";
+      } else {
+        _translatedResult = "Error: Connection Failed";
+      }
+    });
+
+    // Show evaluation modal
+    if (response != null) {
+      String status = response['status']?.toString().toLowerCase() ?? "";
+
+      if (status == 'success' || status == 'low_confidence') {
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted) {
+            _showEvaluation(response);
+          }
+        });
+      }
+    }
+  }
+}
+
   // Helper function to trigger the Evaluation Modal
   void _showEvaluation(Map<String, dynamic> data) {
     showModalBottomSheet(
@@ -134,33 +178,31 @@ class _DayawLandingScreenState extends State<DayawLandingScreen> {
             // 2. BUTTON ROW (Hidden if in Text Mode to keep UI clean)
             if (selectedMode != 'Tagalog to Baybayin')
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 30),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: GestureDetector(
-                          onTap: _uploadFromGallery,
-                          child: _buildUploadWidget(),
-                        ),
-                      ),
-                    ),
-                    GestureDetector(
-                      onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text("Camera capture is currently disabled."),
-                            behavior: SnackBarBehavior.floating,
-                          ),
-                        );
-                      },
-                      child: _buildCameraWidget(),
-                    ),
-                    const Expanded(child: SizedBox()),
-                  ],
-                ),
-              ),
+  padding: const EdgeInsets.symmetric(horizontal: 30),
+  child: Row(
+    children: [
+      Expanded(
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: GestureDetector(
+            onTap: _uploadFromGallery,
+            child: _buildUploadWidget(),
+          ),
+        ),
+      ),
+
+      // ✅ CAMERA BUTTON (FIXED)
+      GestureDetector(
+  onTap: () {
+    print("📷 CAMERA BUTTON CLICKED"); // 👈 ADD THIS
+    _captureFromCamera();
+  },
+  child: _buildCameraWidget(),
+),
+      const Expanded(child: SizedBox()),
+    ],
+  ),
+),
 
             const SizedBox(height: 30),
 

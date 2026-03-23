@@ -2,68 +2,68 @@ import re
 
 class TagalogToBaybayin:
     def __init__(self):
-        # 17 Base Syllables
+        # 17 Base Syllables (Corrected 'ma' and 'ya')
         self.base_map = {
             'a': 'ᜀ', 'e': 'ᜁ', 'i': 'ᜁ', 'o': 'ᜂ', 'u': 'ᜂ',
             'ba': 'ᜊ', 'ka': 'ᜃ', 'da': 'ᜇ', 'ra': 'ᜇ', 'ga': 'ᜄ',
-            'ha': 'ᜑ', 'la': 'ᜎ', 'ma': 'ᜌ', 'na': 'ᜈ', 'nga': 'ᜅ',
+            'ha': 'ᜑ', 'la': 'ᜎ', 'ma': 'ᜋ', 'na': 'ᜈ', 'nga': 'ᜅ',
             'pa': 'ᜉ', 'sa': 'ᜐ', 'ta': 'ᜆ', 'wa': 'ᜏ', 'ya': 'ᜌ'
         }
         
-        self.kudlit_ei = 'ᜒ' # Dot above
-        self.kudlit_ou = 'ᜓ' # Dot below
-        self.virama = '᜔'    # Cross killer
+        self.kudlit_ei = 'ᜒ' # Dot/Line above
+        self.kudlit_ou = 'ᜓ' # Dot/Line below
+        self.virama = '᜔'    # Cross killer (Spanish biyas-krus)
 
     def translate(self, text):
-        # 1. Clean input but keep internal spaces
+        if not text: return ""
         text = text.lower()
         
-        # 2. Enhanced Regex:
-        # Added 'nga' support and ' ' (space) support
-        # Group 1: Consonant + Vowel (including 'nga' + vowel)
-        # Group 2: Standalone Consonants (including 'nga')
-        # Group 3: Standalone Vowels
-        # Group 4: Spaces
-        pattern = r'(nga[aeiou]|(?:[bkdrghlmnpstw])?[aeiou])|(nga|[bkdrghlmnpstw])|([aeiou])|(\s+)'
+        # Updated Pattern: Includes 'y' and 'r', and handles 'nga' priority
+        pattern = r'(nga[aeiou]|(?:[bkdrghlmnpstwry])?[aeiou])|(nga|[bkdrghlmnpstwry])|([aeiou])|(\s+)'
         
+        # findall returns a list of tuples based on groups
         tokens = re.findall(pattern, text)
         
         result = []
         for cv, c, v, space in tokens:
-            # RULE: Handle Space
             if space:
                 result.append(space)
                 continue
 
-            # RULE: Standalone Vowels
+            # Standalone Vowels (A, E/I, O/U)
             if v:
                 result.append(self.base_map.get(v, ''))
             
-            # RULE: Consonant-Vowel (CV) Pairs
+            # Consonant-Vowel (CV) Pairs (e.g., 'ba', 'pi', 'mu')
             elif cv:
                 vowel = cv[-1]
-                consonant_part = cv[:-1] # Gets 'ba' from 'ba' or 'ng' from 'nga'
+                # If CV is just a vowel (regex quirk), handle it
+                if cv in ['a', 'e', 'i', 'o', 'u']:
+                    result.append(self.base_map.get(cv, ''))
+                    continue
                 
-                # Normalize to 'a' base for the map
+                consonant_part = cv[:-1]
                 base = self.base_map.get(consonant_part + 'a', '')
                 
                 if vowel in ['e', 'i']:
                     result.append(base + self.kudlit_ei)
                 elif vowel in ['o', 'u']:
                     result.append(base + self.kudlit_ou)
-                else: # vowel is 'a'
+                else: # vowel is 'a', no kudlit needed
                     result.append(base)
             
-            # RULE: Standalone Consonant (Virama)
+            # Standalone Consonants (e.g., 's' in 'salamat')
             elif c:
-                base = self.base_map.get(c + 'a', '') if 'a' not in c else self.base_map.get(c, '')
+                # Always append the 'a' version of the character plus the virama
+                search_key = c if c.endswith('a') else c + 'a'
+                base = self.base_map.get(search_key, '')
                 if base:
                     result.append(base + self.virama)
                 
         return "".join(result)
 
+# Quick Test
 if __name__ == "__main__":
-    translator = TagalogToBaybayin()
-    # Test with spaces
-    print(translator.translate("Salamat Po"))  # Output: ᜐᜎ᜙ᜆ᜔ ᜉᜓ
-    print(translator.translate("Mabuhay ang Pilipinas"))
+    ttb = TagalogToBaybayin()
+    print(f"Salamat Po -> {ttb.translate('Salamat Po')}")
+    print(f"Mabuhay -> {ttb.translate('Mabuhay')}")

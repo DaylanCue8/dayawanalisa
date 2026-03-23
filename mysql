@@ -2,39 +2,51 @@
 CREATE DATABASE IF NOT EXISTS dayaw;
 USE dayaw;
 
--- 2. Processing Sessions Table
--- Tracks the lifecycle of every image upload/request
-CREATE TABLE IF NOT EXISTS processing_sessions (
-    session_id VARCHAR(50) PRIMARY KEY, -- Unique String (e.g., SESS_12345)
+-- 1. Table for tracking the overall translation attempt
+CREATE TABLE processing_sessions (
+    session_id INT AUTO_INCREMENT PRIMARY KEY,
+    status VARCHAR(50) DEFAULT 'Processing', -- Success, Low_Confidence, Failed
+    device_info VARCHAR(100) DEFAULT 'Mobile',
+    ip_address VARCHAR(45),
     start_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    end_time TIMESTAMP NULL,
-    status ENUM('Processing', 'Success', 'Failed', 'Low_Confidence') DEFAULT 'Processing',
-    device_info VARCHAR(100), -- Android, iOS, or Emulator
-    ip_address VARCHAR(45) -- For Security/Rate Limiting requirements
-) ENGINE=InnoDB;
+    end_time TIMESTAMP NULL ON UPDATE CURRENT_TIMESTAMP
+);
 
--- 3. Recognition Logs Table
--- Stores the HOG/SVM technical results for each session
-CREATE TABLE IF NOT EXISTS recognition_logs (
+-- 2. Table for granular character-by-character feedback
+CREATE TABLE detection_logs (
     log_id INT AUTO_INCREMENT PRIMARY KEY,
-    session_id VARCHAR(50),
-    detected_char VARCHAR(10), -- The predicted Baybayin label
-    confidence_score DECIMAL(5, 4), -- e.g., 0.9542
-    inference_time DECIMAL(10, 3), -- Time in seconds (e.g., 1.245)
-    processed_image_path VARCHAR(255), -- Path to the 42x42 cleaned image
+    session_id INT,
+    detected_char VARCHAR(10), -- e.g., 'NGA', 'LA', 'BA'
+    confidence_score FLOAT,    -- e.g., 85.5
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT fk_session
-        FOREIGN KEY (session_id) 
-        REFERENCES processing_sessions(session_id)
-        ON DELETE CASCADE
-) ENGINE=InnoDB;
+    FOREIGN KEY (session_id) REFERENCES processing_sessions(session_id) ON DELETE CASCADE
+);
 
--- 4. Model Metadata Table
--- Tracks the version of the SVM model (.sav file) used
-CREATE TABLE IF NOT EXISTS model_metadata (
-    version_id VARCHAR(20) PRIMARY KEY, -- e.g., "v1.0-Linear"
-    training_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    total_samples INT, -- Number of augmented images used for training
-    accuracy_score DECIMAL(5, 2), -- e.g., 92.50
-    kernel_type VARCHAR(20) DEFAULT 'Linear'
-) ENGINE=InnoDB;
+
+
+-- NOT IN DATABASE SCHEMA BUT RELEVANT FOR FRONTEND:
+
+-- 3. Table for User Accounts/Profiles
+-- Supports Objective 4: Tracking learning progress and improvement rates
+CREATE TABLE users (
+    user_id INT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(50) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL, -- For security during White-box testing
+    full_name VARCHAR(100),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 4. Table for Archiving Translations
+-- Supports Objective 1.3: Digital documentation and "view and copy" features
+CREATE TABLE translation_history (
+    history_id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT,
+    session_id INT,
+    input_type ENUM('Image', 'Text') NOT NULL, -- Distinguishes BTT vs TTB
+    raw_input TEXT, -- Stores the Tagalog text or the path to the uploaded image
+    final_output TEXT, -- Stores the "NGALABA" or Baybayin script result
+    is_bookmarked BOOLEAN DEFAULT FALSE, -- Allows users to "archive" favorite translations
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+    FOREIGN KEY (session_id) REFERENCES processing_sessions(session_id) ON DELETE SET NULL
+);
