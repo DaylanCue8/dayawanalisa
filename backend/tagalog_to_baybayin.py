@@ -2,68 +2,77 @@ import re
 
 class TagalogToBaybayin:
     def __init__(self):
-        # 17 Base Syllables (Corrected 'ma' and 'ya')
+        # 17 Base Syllables + Unique Vowel Glyphs
         self.base_map = {
             'a': 'ᜀ', 'e': 'ᜁ', 'i': 'ᜁ', 'o': 'ᜂ', 'u': 'ᜂ',
             'ba': 'ᜊ', 'ka': 'ᜃ', 'da': 'ᜇ', 'ra': 'ᜇ', 'ga': 'ᜄ',
             'ha': 'ᜑ', 'la': 'ᜎ', 'ma': 'ᜋ', 'na': 'ᜈ', 'nga': 'ᜅ',
             'pa': 'ᜉ', 'sa': 'ᜐ', 'ta': 'ᜆ', 'wa': 'ᜏ', 'ya': 'ᜌ'
         }
-        
         self.kudlit_ei = 'ᜒ' # Dot/Line above
         self.kudlit_ou = 'ᜓ' # Dot/Line below
-        self.virama = '᜔'    # Cross killer (Spanish biyas-krus)
+        self.virama = '᜔'    # Cross killer (+)
 
     def translate(self, text):
         if not text: return ""
-        text = text.lower()
+        text = text.lower().strip()
         
-        # Updated Pattern: Includes 'y' and 'r', and handles 'nga' priority
-        pattern = r'(nga[aeiou]|(?:[bkdrghlmnpstwry])?[aeiou])|(nga|[bkdrghlmnpstwry])|([aeiou])|(\s+)'
+        # 1. Linguistic Exceptions
+        if text == "mga": return "ᜋᜄ"
         
-        # findall returns a list of tuples based on groups
+        # 2. Pre-process Digraphs: Ensure 'ng' is one unit
+        text = text.replace('ng', 'NG') 
+
+        # 3. Pattern Strategy:
+        # Group 1: Consonant (inc. NG) + Vowel
+        # Group 2: Standalone Consonant (Virama)
+        # Group 3: Standalone Vowel
+        # Group 4: Spaces
+        pattern = r'(NG[aeiou]|(?:[bkdrghlmnpstwry])?[aeiou])|(NG|[bkdrghlmnpstwry])|([aeiou])|(\s+)'
+        
         tokens = re.findall(pattern, text)
-        
         result = []
+        
         for cv, c, v, space in tokens:
             if space:
                 result.append(space)
                 continue
-
-            # Standalone Vowels (A, E/I, O/U)
-            if v:
-                result.append(self.base_map.get(v, ''))
             
-            # Consonant-Vowel (CV) Pairs (e.g., 'ba', 'pi', 'mu')
+            # --- RULE A: Standalone Vowels (A, E/I, O/U) ---
+            # We check 'v' group and check if 'cv' is actually just a vowel
+            vowel_token = v if v else (cv if cv in 'aeiou' else None)
+            if vowel_token:
+                result.append(self.base_map.get(vowel_token, ''))
+                continue
+
+            # --- RULE B: Consonant-Vowel (CV) Pairs ---
             elif cv:
-                vowel = cv[-1]
-                # If CV is just a vowel (regex quirk), handle it
-                if cv in ['a', 'e', 'i', 'o', 'u']:
-                    result.append(self.base_map.get(cv, ''))
-                    continue
+                vowel_part = cv[-1]
+                cons_part = cv[:-1]
                 
-                consonant_part = cv[:-1]
-                base = self.base_map.get(consonant_part + 'a', '')
+                # Map to 'nga' for our placeholder, otherwise append 'a'
+                key = 'nga' if cons_part == 'NG' else cons_part + 'a'
+                base = self.base_map.get(key, '')
                 
-                if vowel in ['e', 'i']:
+                if vowel_part in ['e', 'i']:
                     result.append(base + self.kudlit_ei)
-                elif vowel in ['o', 'u']:
+                elif vowel_part in ['o', 'u']:
                     result.append(base + self.kudlit_ou)
-                else: # vowel is 'a', no kudlit needed
+                else: # inherent 'a'
                     result.append(base)
             
-            # Standalone Consonants (e.g., 's' in 'salamat')
+            # --- RULE C: Standalone Consonants (Final Consonants) ---
             elif c:
-                # Always append the 'a' version of the character plus the virama
-                search_key = c if c.endswith('a') else c + 'a'
-                base = self.base_map.get(search_key, '')
+                key = 'nga' if c == 'NG' else c + 'a'
+                base = self.base_map.get(key, '')
                 if base:
                     result.append(base + self.virama)
-                
+                    
         return "".join(result)
 
 # Quick Test
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     ttb = TagalogToBaybayin()
-    print(f"Salamat Po -> {ttb.translate('Salamat Po')}")
-    print(f"Mabuhay -> {ttb.translate('Mabuhay')}")
+    print(f"Opo -> {ttb.translate('Opo')}")       # Expected: ᜂᜉᜓ
+    print(f"Ngiti -> {ttb.translate('Ngiti')}")   # Expected: ᜅᜒᜆᜒ
+    print(f"Salamat -> {ttb.translate('Salamat')}") # Expected: ᜐᜎᜋᜆ᜔

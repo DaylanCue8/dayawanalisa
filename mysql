@@ -22,31 +22,14 @@ CREATE TABLE detection_logs (
     FOREIGN KEY (session_id) REFERENCES processing_sessions(session_id) ON DELETE CASCADE
 );
 
-
-
--- NOT IN DATABASE SCHEMA BUT RELEVANT FOR FRONTEND:
-
--- 3. Table for User Accounts/Profiles
--- Supports Objective 4: Tracking learning progress and improvement rates
-CREATE TABLE users (
-    user_id INT AUTO_INCREMENT PRIMARY KEY,
-    username VARCHAR(50) NOT NULL UNIQUE,
-    password_hash VARCHAR(255) NOT NULL, -- For security during White-box testing
-    full_name VARCHAR(100),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
--- 4. Table for Archiving Translations
--- Supports Objective 1.3: Digital documentation and "view and copy" features
-CREATE TABLE translation_history (
-    history_id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT,
-    session_id INT,
-    input_type ENUM('Image', 'Text') NOT NULL, -- Distinguishes BTT vs TTB
-    raw_input TEXT, -- Stores the Tagalog text or the path to the uploaded image
-    final_output TEXT, -- Stores the "NGALABA" or Baybayin script result
-    is_bookmarked BOOLEAN DEFAULT FALSE, -- Allows users to "archive" favorite translations
+CREATE TABLE open_baybayin_archive (
+    archive_id INT AUTO_INCREMENT PRIMARY KEY,
+    log_id INT NOT NULL,               -- Links to the original detection (Traceability)
+    label_char VARCHAR(10),            -- The Romanized name (e.g., 'KA', 'BA', 'A')
+    script_type ENUM('Handwritten', 'Printed'), -- Useful for researchers
+    image_path VARCHAR(255),           -- URL/Path to the cropped image file in Cloud Storage
+    confidence_score FLOAT,            -- Must be 0.90 or higher
+    contributor_consent BOOLEAN DEFAULT 1, -- Verification that user clicked "Yes"
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
-    FOREIGN KEY (session_id) REFERENCES processing_sessions(session_id) ON DELETE SET NULL
+    FOREIGN KEY (log_id) REFERENCES detection_logs(log_id) ON DELETE CASCADE
 );
