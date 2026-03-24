@@ -1,0 +1,14 @@
+[run]
+source = .
+omit =
+    app.py
+    btt_test.py
+    test_translator.py
+    tests/model_evaluation_report.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:
+    raise NotImplementedError
+    pass
