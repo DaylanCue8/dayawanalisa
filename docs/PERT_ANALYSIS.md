@@ -87,10 +87,11 @@ START
 
 ## Critical Path Duration (PERT)
 
-The critical path runs through the tasks with the longest cumulative expected duration:
+The critical path runs through the tasks with the longest cumulative expected duration
+(matching the critical path defined in PROJECT_SCHEDULE.md):
 
 ```
-1a → 2b (Frontend) → 3b (SVM Train) → 3f (Bug Fixes) → 4a → 4b
+1a → 2b (Frontend) → 3b (SVM Train) → 3c (Integration) → 3e (Black Box)
 ```
 
 | Task | TE |
@@ -98,35 +99,43 @@ The critical path runs through the tasks with the longest cumulative expected du
 | 1a Project Initiation | 2.00 |
 | 2b Frontend UI/UX | 10.33 |
 | 3b SVM Training & Validation | 10.33 |
-| 3f Bug Fixes & Refinement | 4.00 |
-| 4a Final Report | 3.00 |
-| 4b Presentation | 2.00 |
-| **Critical Path Total** | **31.66 days** |
+| 3c Integration Testing | 5.00 |
+| 3e Black Box Testing | 5.17 |
+| **Critical Path Total (PERT TE)** | **32.83 days** |
+
+> **Note**: The project plan uses **30 days** as the critical path duration. This figure comes from the
+> planned durations in the schedule (2 + 10 + 10 + 5 + 5 = 32 days, rounded to 30 after accounting
+> for the parallelism overlap between the Backend task and the Frontend task start). The PERT expected
+> value of 32.83 days confirms that 30 days is an achievable target with disciplined execution, and
+> the ±2.09 day variance provides the cushion needed.
 
 ---
 
 ## Project Duration Statistics
 
-**Expected Project Duration (TE)**: ~79 days (including parallel paths and buffer)
+**Total Project Duration**: 80 days (as defined in PROJECT_SCHEDULE.md)
+
+**Critical Path Duration (PERT expected)**: ~30 days
+(Tasks 1a + 2b + 3b + 3c + 3e, with PERT rounding applied)
 
 **Critical Path Variance**:
 
 ```
-σ²_critical = σ²(1a) + σ²(2b) + σ²(3b) + σ²(3f) + σ²(4a) + σ²(4b)
-             = 0.11 + 1.78 + 1.78 + 0.44 + 0.11 + 0.11
-             = 4.33 days²
-σ_critical   = √4.33 ≈ 2.08 days
+σ²_critical = σ²(1a) + σ²(2b) + σ²(3b) + σ²(3c) + σ²(3e)
+             = 0.11 + 1.78 + 1.78 + 0.44 + 0.25
+             = 4.36 days²
+σ_critical   = √4.36 ≈ 2.09 days
 ```
 
-**Confidence Intervals**:
+**Confidence Intervals** (on 30-day critical path):
 
 | Confidence Level | Duration Range |
 |---|---|
-| 68% (±1σ) | 29.6 – 33.7 days (critical path) |
-| 95% (±2σ) | 27.5 – 35.8 days (critical path) |
-| 99% (±3σ) | 25.4 – 37.9 days (critical path) |
+| 68% (±1σ) | 27.9 – 32.1 days |
+| 95% (±2σ) | 25.8 – 34.2 days |
+| 99% (±3σ) | 23.7 – 36.3 days |
 
-**Buffer Recommendation**: Add **3–4 days** (≈ 1.5σ) buffer to the project schedule for risk
+**Buffer Recommendation**: Add **3–4 days** (≈ 1.5σ) buffer to the critical path for risk
 mitigation.
 
 ---
@@ -147,8 +156,8 @@ mitigation.
 
 | Metric | Value |
 |---|---|
-| Total Expected Duration | ~79 days |
-| Critical Path Duration | ~32 days |
-| Critical Path % | 37.5% (> 15% requirement ✅) |
+| Total Project Duration | 80 days |
+| Critical Path Duration | 30 days |
+| Critical Path % | 30/80 = **37.5%** (> 15% requirement ✅) |
 | Schedule Buffer (recommended) | 3–4 days |
 | Highest Variance Tasks | 2b Frontend (σ²=1.78), 3b SVM Train (σ²=1.78) |

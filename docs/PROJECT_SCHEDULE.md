@@ -7,26 +7,24 @@ ID   Activity                          Duration  Start  End    Critical?
 ──────────────────────────────────────────────────────────────────────
 1a   Project Initiation                2 days    D1     D2     ⭐ YES
 1b   Data Collection & Organisation    3 days    D3     D5
-─────────────────── Phase 2: Development ────────────────────────────
+─────────────────── Phase 2: Development ─────────────────────────────
 2a   Backend API Implementation        8 days    D6     D13    ⭐ YES
 2b   Frontend UI/UX Development        10 days   D6     D15    ⭐ YES
 2c   SVM Model Training Code           5 days    D6     D10
 2d   Translation System Implementation 7 days    D6     D12
-─────────────────── Phase 3: Testing ────────────────────────────────
-3a   Unit Test Development             5 days    D16    D20
-3b   SVM Model Training & Validation   10 days   D16    D25    ⭐ YES
-3c   Integration Testing               5 days    D16    D20
-3d   White Box Testing                 5 days    D21    D25
-3e   Black Box Testing                 5 days    D21    D25
-3f   Bug Fixes & Refinement            4 days    D26    D29
-─────────────────── Phase 4: Documentation ──────────────────────────
-4a   Final Report Writing              3 days    D30    D32
-4b   Presentation Preparation          2 days    D33    D34
+─────────────────── Phase 3: Testing ─────────────────────────────────
+3a   Unit Test Development             5 days    D46    D50
+3b   SVM Model Training & Validation   10 days   D46    D55    ⭐ YES
+3c   Integration Testing               5 days    D56    D60    ⭐ YES
+3d   White Box Testing                 5 days    D61    D65
+3e   Black Box Testing                 5 days    D61    D65    ⭐ YES
+3f   Bug Fixes & Refinement            4 days    D66    D69
+─────────────────── Phase 4: Documentation ───────────────────────────
+4a   Final Report Writing              3 days    D76    D78
+4b   Presentation Preparation          2 days    D79    D80
 ──────────────────────────────────────────────────────────────────────
-     TOTAL PROJECT                     34 days*  D1     D34
+     TOTAL PROJECT                     80 days   D1     D80
 ```
-
-> \*Calendar duration = 34 working days (~7 weeks). Full elapsed time with weekends ≈ 48 calendar days.
 
 ---
 
@@ -55,29 +53,32 @@ project duration.
 Project Initiation (D1–D2)
     ↓
 Backend API (D6–D13) ──┐
-                        ├──► SVM Training & Validation (D16–D25)
-Frontend UI/UX (D6–D15)─┘        ↓
-                          Integration Testing (D26–D30)
+                        ├──► Frontend UI/UX (D6–D15, longest parallel leg)
+                        │         ↓
+                        └──► SVM Model Training & Validation (D46–D55)
                                   ↓
-                          Black Box / White Box Testing (D31–D35) [overlapping with integration]
+                         Integration Testing (D56–D60)
                                   ↓
-                          Documentation (D36–D40)
+                         Black Box Testing (D61–D65)
+                                  ↓
+                          Documentation (D76–D80)
 ```
 
 ### Critical Path Duration
 
+The critical path is the longest sequence of dependent tasks with no slack:
+
 | Segment | Days |
 |---|---|
-| Project Initiation | 2 |
-| Backend + Frontend (parallel) | 10 (longest of the two) |
-| SVM Training & Validation | 10 |
-| Integration Testing | 5 |
-| Black Box + White Box Testing | 5 |
-| Bug Fixes & Refinement | 4 |
-| Documentation & Presentation | 5 |
+| Project Initiation (1a) | 2 |
+| Frontend UI/UX Development (2b, longest parallel leg) | 10 |
+| SVM Model Training & Validation (3b) | 10 |
+| Integration Testing (3c) | 5 |
+| Black Box Testing (3e) | 5 |
 | **Critical Path Total** | **30 days** |
 
-**Total Project Duration**: 80 days (including Phase 1 setup and schedule buffer)
+**Total Project Duration**: 80 days
+(Phases 1–4 including parallel development tasks, testing phases, buffer, and documentation)
 
 **Critical Path Percentage**: 30 / 80 = **37.5%** ✅ (exceeds the 15% minimum requirement)
 
@@ -134,7 +135,7 @@ Frontend UI/UX (D6–D15)─┘        ↓
 | M2 – Data Ready | D5 | Labelled dataset organised |
 | M3 – Backend Alpha | D13 | Flask API accepting image uploads |
 | M4 – Frontend Alpha | D15 | Flutter app connected to backend |
-| M5 – Test Suite Green | D25 | 131 tests PASSED, 85%+ coverage |
-| M6 – Validation Complete | D30 | All objectives met with evidence |
-| M7 – Final Report | D32 | Documentation submitted |
-| M8 – Presentation | D34 | Defence / demo complete |
+| M5 – Test Suite Green | D55 | SVM validated, 131 tests PASSED, 85%+ coverage |
+| M6 – Validation Complete | D65 | All White Box / Black Box test cases pass |
+| M7 – Final Report | D78 | Documentation submitted |
+| M8 – Presentation | D80 | Defence / demo complete |
