@@ -5,6 +5,7 @@ omit =
     btt_test.py
     test_translator.py
     tests/model_evaluation_report.py
+    tests/archival_evidence_reporter.py
 
 [report]
 exclude_lines =
