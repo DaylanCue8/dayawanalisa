@@ -368,7 +368,7 @@ def generate_coverage_summary():
         "Coverage HTML report will be in: htmlcov/index.html",
     ]
     out = os.path.join(REPORTS_DIR, "coverage_summary.txt")
-    with open(out, "w") as fh:
+    with open(out, "w", encoding="utf-8") as fh:
         fh.write("\n".join(lines))
     print(f"   ✅ Saved → {out}")
 
