@@ -6,8 +6,8 @@ import 'package:image_picker/image_picker.dart';
 
 class ApiService {
   // 💡 PRO-TIP: Ensure your Flask app is running on host='0.0.0.0'
-  // and your phone is on the same Wi-Fi as 192.168.254.108
-  static const String baseUrl = 'http://192.168.254.108:5000';
+  // and your phone is on the same Wi-Fi as 192.168.254.101
+  static const String baseUrl = 'http://192.168.254.101:5000';
 
   /// --- MODE: Baybayin to Tagalog (Detailed for Evaluation Modal) ---
   Future<Map<String, dynamic>?> uploadAndTranslateDetailed(XFile imageFile, String mode) async {

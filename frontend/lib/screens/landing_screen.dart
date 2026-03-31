@@ -296,7 +296,7 @@ class _DayawLandingScreenState extends State<DayawLandingScreen> {
       children: [
         if (_webImage != null)
           Positioned.fill(
-            child: Image.memory(_webImage!, fit: BoxFit.cover),
+            child: Image.memory(_webImage!, fit: BoxFit.contain),
           ),
         Container(
           color: _webImage != null ? Colors.black26 : Colors.transparent,
