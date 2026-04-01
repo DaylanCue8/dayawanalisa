@@ -5,6 +5,9 @@ import '../services/api_service.dart';
 import '../widgets/info_modal.dart';
 import '../widgets/evaluation_modal.dart';
 
+const Color _kYellow = Color(0xFFFFC107);
+const Color _kBlack = Colors.black;
+
 class DayawLandingScreen extends StatefulWidget {
   const DayawLandingScreen({super.key});
 
@@ -22,9 +25,8 @@ class _DayawLandingScreenState extends State<DayawLandingScreen> {
   bool _isLoading = false;
   Uint8List? _webImage;
 
-  // NEW: Added to track the linguistic confidence score
   double _confidenceScore = 0.0;
-
+  Map<String, dynamic>? _lastImageResponse;
 
   /// --- CORE TRANSLATION LOGIC ---
 
@@ -52,7 +54,6 @@ class _DayawLandingScreenState extends State<DayawLandingScreen> {
       _isLoading = false;
       if (response != null) {
         _translatedResult = response['translated_text'] ?? "No result";
-        // CAPTURE CONFIDENCE: Ensuring we extract the value from the API
         _confidenceScore = (response['confidence'] as num).toDouble();
       } else {
         _translatedResult = "Error: Connection Failed";
@@ -76,6 +77,7 @@ class _DayawLandingScreenState extends State<DayawLandingScreen> {
     setState(() {
       _isLoading = false;
       if (response != null) {
+        _lastImageResponse = response;
         _translatedResult = response['translated_text'] ?? "No result";
 
         String status = response['status']?.toString().toLowerCase() ?? "";
@@ -116,41 +118,53 @@ class _DayawLandingScreenState extends State<DayawLandingScreen> {
     );
   }
 
+  void _showInfoModal() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => const InfoModal(),
+    );
+  }
+
+  void _showChartModal() {
+    if (_lastImageResponse != null) {
+      _showEvaluation(_lastImageResponse!);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("No recognition data yet. Capture or upload an image first."),
+        ),
+      );
+    }
+  }
+
+  void _showModeSelector() {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => _buildModeSelectorSheet(),
+    );
+  }
+
   /// --- UI BUILDERS ---
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
     return Scaffold(
-      backgroundColor: colorScheme.surface,
+      backgroundColor: Colors.white,
       body: SafeArea(
         child: Column(
           children: [
-            const SizedBox(height: 10),
-            _buildHeader(colorScheme),
-            const SizedBox(height: 16),
+            _buildTopNav(),
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Card(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: selectedMode == 'Tagalog to Baybayin'
-                        ? _buildTextInputView(colorScheme)
-                        : _buildImageView(colorScheme),
-                  ),
-                ),
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: _buildMainCard(),
               ),
             ),
-            const SizedBox(height: 24),
-            if (selectedMode != 'Tagalog to Baybayin')
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 32),
-                child: _buildImageActions(colorScheme),
-              ),
-            const SizedBox(height: 24),
-            _buildModeSelector(colorScheme),
+            const SizedBox(height: 16),
+            _buildActionButtons(),
+            const SizedBox(height: 16),
+            _buildBottomSection(),
             const SizedBox(height: 16),
           ],
         ),
@@ -158,30 +172,61 @@ class _DayawLandingScreenState extends State<DayawLandingScreen> {
     );
   }
 
-  Widget _buildHeader(ColorScheme colorScheme) {
+  // ── Top navigation bar ──────────────────────────────────────────────────────
+
+  Widget _buildTopNav() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          // Placeholder to balance the info button
-          const SizedBox(width: 48),
-          Image.asset('assets/images/dayawlogo.png', height: 50),
-          IconButton(
-            icon: Icon(Icons.info_outline, color: colorScheme.primary),
-            tooltip: 'About Dayaw',
-            onPressed: () => showModalBottomSheet(
-              context: context,
-              isScrollControlled: true,
-              builder: (context) => const InfoModal(),
-            ),
-          ),
+          _navItem("about", onTap: _showInfoModal),
+          _navItem("how", onTap: _showInfoModal),
+          // Centre: logo acts as the "dayaw" tab
+          Image.asset('assets/images/dayawlogo.png', height: 40),
+          _navItem("chart", onTap: _showChartModal),
+          _navItem("settings", onTap: _showModeSelector),
         ],
       ),
     );
   }
 
-  Widget _buildTextInputView(ColorScheme colorScheme) {
+  Widget _navItem(String label, {VoidCallback? onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Text(
+          label,
+          style: const TextStyle(
+            fontSize: 13,
+            color: _kBlack,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Main yellow card ─────────────────────────────────────────────────────────
+
+  Widget _buildMainCard() {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: _kYellow,
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: selectedMode == 'Tagalog to Baybayin'
+            ? _buildTextInputView()
+            : _buildImageView(),
+      ),
+    );
+  }
+
+  Widget _buildTextInputView() {
     Color getConfidenceColor() {
       if (_confidenceScore >= 95) return Colors.green;
       if (_confidenceScore >= 75) return Colors.orange;
@@ -197,28 +242,41 @@ class _DayawLandingScreenState extends State<DayawLandingScreen> {
             controller: _textController,
             onChanged: _handleTextTranslation,
             textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 18),
+            style: const TextStyle(fontSize: 18, color: _kBlack),
             decoration: InputDecoration(
               hintText: "I-type ang Tagalog dito...",
-              fillColor: colorScheme.surfaceContainerHighest,
-              suffixIcon: Icon(Icons.translate, color: colorScheme.primary),
+              hintStyle: TextStyle(color: _kBlack.withAlpha(128)),
+              fillColor: Colors.white.withAlpha(200),
+              filled: true,
+              suffixIcon: const Icon(Icons.translate, color: _kBlack),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide.none,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: BorderSide.none,
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(color: _kBlack, width: 1),
+              ),
             ),
           ),
           const SizedBox(height: 36),
           if (_isLoading)
-            CircularProgressIndicator(color: colorScheme.primary)
+            const CircularProgressIndicator(color: _kBlack)
           else ...[
             Text(
               _translatedResult,
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 60,
-                color: colorScheme.primary,
+                color: _kBlack,
                 fontFamily: 'Baybayin',
               ),
             ),
-
-            // COMPLETED: System Confidence Display
+            // System Confidence Display
             if (_translatedResult != "Result will appear here")
               Padding(
                 padding: const EdgeInsets.only(top: 20),
@@ -232,12 +290,9 @@ class _DayawLandingScreenState extends State<DayawLandingScreen> {
                         color: getConfidenceColor(),
                       ),
                     ),
-                    Text(
+                    const Text(
                       "System Confidence",
-                      style: TextStyle(
-                        color: colorScheme.onSurfaceVariant,
-                        fontSize: 13,
-                      ),
+                      style: TextStyle(color: _kBlack, fontSize: 13),
                     ),
                   ],
                 ),
@@ -248,94 +303,221 @@ class _DayawLandingScreenState extends State<DayawLandingScreen> {
     );
   }
 
-  Widget _buildImageView(ColorScheme colorScheme) {
+  Widget _buildImageView() {
     return Stack(
+      alignment: Alignment.center,
       children: [
         if (_webImage != null)
           Positioned.fill(child: Image.memory(_webImage!, fit: BoxFit.contain)),
-        Center(
-          child: _isLoading
-              ? CircularProgressIndicator(color: colorScheme.primary)
-              : Text(
-                  _translatedResult,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: _webImage != null
-                        ? Colors.white
-                        : colorScheme.onSurfaceVariant,
-                  ),
-                ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildImageActions(ColorScheme colorScheme) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        // Gallery picker – outlined button
-        OutlinedButton.icon(
-          onPressed: _uploadFromGallery,
-          icon: const Icon(Icons.photo_library_outlined),
-          label: const Text("Gallery"),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: colorScheme.onSurfaceVariant,
-            side: BorderSide(color: colorScheme.outlineVariant),
+        if (_webImage == null)
+          const Padding(
+            padding: EdgeInsets.all(48),
+            child: Icon(Icons.image_outlined, size: 80, color: Colors.white54),
           ),
-        ),
-        const SizedBox(width: 32),
-        // Camera capture – filled button (primary action)
-        FilledButton.icon(
-          onPressed: _captureFromCamera,
-          icon: const Icon(Icons.camera_alt_outlined),
-          label: const Text("Camera"),
-        ),
+        if (_isLoading)
+          const CircularProgressIndicator(color: _kBlack)
+        else if (_translatedResult != "Result will appear here" &&
+            _translatedResult != "Processing Image...")
+          Container(
+            margin: const EdgeInsets.all(16),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.black54,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              _translatedResult,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+          ),
       ],
     );
   }
 
-  Widget _buildModeSelector(ColorScheme colorScheme) {
+  // ── Action buttons row ───────────────────────────────────────────────────────
+
+  Widget _buildActionButtons() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: SegmentedButton<String>(
-        segments: const [
-          ButtonSegment(
-            value: 'Baybayin to Tagalog',
-            label: Text('Baybayin → Tagalog'),
-            icon: Icon(Icons.image_outlined),
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // Upload – outlined yellow border
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: _uploadFromGallery,
+              icon: const Icon(Icons.upload_outlined, color: _kBlack),
+              label: const Text("Upload", style: TextStyle(color: _kBlack)),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: _kYellow, width: 2),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+            ),
           ),
-          ButtonSegment(
-            value: 'Tagalog to Baybayin',
-            label: Text('Tagalog → Baybayin'),
-            icon: Icon(Icons.keyboard_outlined),
+          const SizedBox(width: 12),
+          // Centre – profile icon (opens mode selector)
+          Container(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: _kYellow, width: 2),
+            ),
+            child: IconButton(
+              onPressed: _showModeSelector,
+              icon: const Icon(Icons.person_outline, color: _kBlack),
+              iconSize: 28,
+            ),
+          ),
+          const SizedBox(width: 12),
+          // Capture – filled yellow with camera icon
+          Expanded(
+            child: ElevatedButton.icon(
+              onPressed: _captureFromCamera,
+              icon: const Icon(Icons.camera_alt, color: _kBlack),
+              label: const Text("Capture", style: TextStyle(color: _kBlack)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _kYellow,
+                foregroundColor: _kBlack,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+            ),
           ),
         ],
-        selected: {selectedMode},
-        onSelectionChanged: (Set<String> newSelection) {
-          setState(() {
-            selectedMode = newSelection.first;
-            _translatedResult = "Result will appear here";
-            _webImage = null;
-            _textController.clear();
-            _confidenceScore = 0.0;
-          });
-        },
-        style: ButtonStyle(
-          backgroundColor: WidgetStateProperty.resolveWith((states) {
-            if (states.contains(WidgetState.selected)) {
-              return colorScheme.primaryContainer;
-            }
-            return null;
-          }),
-          foregroundColor: WidgetStateProperty.resolveWith((states) {
-            if (states.contains(WidgetState.selected)) {
-              return colorScheme.onPrimaryContainer;
-            }
-            return colorScheme.onSurfaceVariant;
-          }),
+      ),
+    );
+  }
+
+  // ── Bottom white icon section ────────────────────────────────────────────────
+
+  Widget _buildBottomSection() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(20),
+            blurRadius: 12,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          // Chart icon – filled yellow circle
+          GestureDetector(
+            onTap: _showChartModal,
+            child: Container(
+              padding: const EdgeInsets.all(10),
+              decoration: const BoxDecoration(
+                color: _kYellow,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.bar_chart, color: _kBlack, size: 22),
+            ),
+          ),
+          // Settings icon
+          GestureDetector(
+            onTap: _showModeSelector,
+            child: const Icon(Icons.settings_outlined, color: _kBlack, size: 28),
+          ),
+          // Hex / Baybayin symbol icon
+          GestureDetector(
+            onTap: _showInfoModal,
+            child: const Icon(Icons.hexagon_outlined, color: _kBlack, size: 28),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Mode selector bottom sheet ───────────────────────────────────────────────
+
+  Widget _buildModeSelectorSheet() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Drag handle
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          const Text(
+            "Translation Mode",
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 20),
+          _modeOption('Baybayin to Tagalog', Icons.image_outlined),
+          const SizedBox(height: 12),
+          _modeOption('Tagalog to Baybayin', Icons.keyboard_outlined),
+        ],
+      ),
+    );
+  }
+
+  Widget _modeOption(String mode, IconData icon) {
+    final bool isSelected = selectedMode == mode;
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          selectedMode = mode;
+          _translatedResult = "Result will appear here";
+          _webImage = null;
+          _textController.clear();
+          _confidenceScore = 0.0;
+        });
+        Navigator.pop(context);
+      },
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        decoration: BoxDecoration(
+          color: isSelected ? _kYellow : Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isSelected ? _kYellow : Colors.grey.shade300,
+            width: 2,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: _kBlack),
+            const SizedBox(width: 12),
+            Text(
+              mode,
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                color: _kBlack,
+              ),
+            ),
+            if (isSelected) ...[
+              const Spacer(),
+              const Icon(Icons.check_circle, color: _kBlack),
+            ],
+          ],
         ),
       ),
     );

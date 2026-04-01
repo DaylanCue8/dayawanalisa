@@ -10,7 +10,7 @@ class DayawApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const Color seedColor = Color(0xFF6D4C41); // rich brown seed
+    const Color seedColor = Color(0xFFFFC107); // primary yellow
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
