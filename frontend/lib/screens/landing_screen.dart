@@ -22,123 +22,93 @@ class _DayawLandingScreenState extends State<DayawLandingScreen> {
   bool _isLoading = false;
   Uint8List? _webImage;
 
+  // NEW: Added to track the linguistic confidence score
+  double _confidenceScore = 0.0;
+
   final List<String> translationModes = [
     'Baybayin to Tagalog',
     'Tagalog to Baybayin',
-    'Sanayin'
   ];
 
-  // Logic for Tagalog to Baybayin (Text-based)
+  /// --- CORE TRANSLATION LOGIC ---
+
   Future<void> _handleTextTranslation(String text) async {
-    if (text.trim().isEmpty) return;
+    if (text.trim().isEmpty) {
+      setState(() {
+        _translatedResult = "Result will appear here";
+        _confidenceScore = 0.0;
+      });
+      return;
+    }
 
     setState(() {
       _isLoading = true;
       _translatedResult = "Translating...";
     });
 
-    final result = await _apiService.translateTagalogToBaybayin(text);
+    final response = await _apiService.uploadAndTranslateDetailed(
+      null, 
+      selectedMode, 
+      text: text
+    );
 
     setState(() {
-      _translatedResult = result;
       _isLoading = false;
+      if (response != null) {
+        _translatedResult = response['translated_text'] ?? "No result";
+        // CAPTURE CONFIDENCE: Ensuring we extract the value from the API
+        _confidenceScore = (response['confidence'] as num).toDouble();
+      } else {
+        _translatedResult = "Error: Connection Failed";
+        _confidenceScore = 0.0;
+      }
     });
   }
 
-  // Logic for Baybayin to Tagalog (Image-based)
-  Future<void> _uploadFromGallery() async {
-    final XFile? photo = await _picker.pickImage(source: ImageSource.gallery);
-
-    if (photo != null) {
-      final bytes = await photo.readAsBytes();
-
-      // STEP 1: Show "Processing" state first
-      setState(() {
-        _isLoading = true;
-        _webImage = bytes;
-        _translatedResult = "Processing Image...";
-      });
-
-      // STEP 2: Wait for the API to actually process the image
-      final response = await _apiService.uploadAndTranslateDetailed(photo, selectedMode);
-
-      // STEP 3: Update the UI with the result FIRST
-      setState(() {
-        _isLoading = false;
-        if (response != null) {
-          _translatedResult = response['translated_text'] ?? "No result";
-        } else {
-          _translatedResult = "Error: Connection Failed";
-        }
-      });
-
-      // STEP 4: Small delay to let the user see the result on the main screen
-      // Then open the modal if the status is correct
-      if (response != null) {
-        String status = response['status']?.toString().toLowerCase() ?? "";
-        
-        if (status == 'success' || status == 'low_confidence') {
-          // Future.delayed ensures the UI has finished its last build cycle
-          Future.delayed(const Duration(milliseconds: 500), () {
-            if (mounted) {
-              _showEvaluation(response);
-            }
-          });
-        }
-      }
-    }
-  }
-
-  Future<void> _captureFromCamera() async {
-  final XFile? photo = await _picker.pickImage(
-    source: ImageSource.camera,
-    imageQuality: 85, // compress a bit for faster upload
-  );
-
-  if (photo != null) {
+  Future<void> _processImage(XFile? photo) async {
+    if (photo == null) return;
     final bytes = await photo.readAsBytes();
 
-    // Show loading + preview
     setState(() {
       _isLoading = true;
       _webImage = bytes;
       _translatedResult = "Processing Image...";
     });
 
-    // Send to API
     final response = await _apiService.uploadAndTranslateDetailed(photo, selectedMode);
 
-    // Update UI
     setState(() {
       _isLoading = false;
       if (response != null) {
         _translatedResult = response['translated_text'] ?? "No result";
+        
+        String status = response['status']?.toString().toLowerCase() ?? "";
+        if (status == 'success' || status == 'low_confidence') {
+          Future.delayed(const Duration(milliseconds: 500), () {
+            if (mounted) _showEvaluation(response);
+          });
+        }
       } else {
         _translatedResult = "Error: Connection Failed";
       }
     });
-
-    // Show evaluation modal
-    if (response != null) {
-      String status = response['status']?.toString().toLowerCase() ?? "";
-
-      if (status == 'success' || status == 'low_confidence') {
-        Future.delayed(const Duration(milliseconds: 500), () {
-          if (mounted) {
-            _showEvaluation(response);
-          }
-        });
-      }
-    }
   }
-}
 
-  // Helper function to trigger the Evaluation Modal
+  Future<void> _uploadFromGallery() async {
+    final XFile? photo = await _picker.pickImage(source: ImageSource.gallery);
+    _processImage(photo);
+  }
+
+  Future<void> _captureFromCamera() async {
+    final XFile? photo = await _picker.pickImage(source: ImageSource.camera, imageQuality: 85);
+    _processImage(photo);
+  }
+
   void _showEvaluation(Map<String, dynamic> data) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.transparent, // Allows for the rounded top corners
+      backgroundColor: Colors.transparent,
       builder: (context) => EvaluationModal(
         detections: data['individual_detections'] ?? [],
         averageConfidence: (data['confidence'] as num).toDouble(),
@@ -146,7 +116,9 @@ class _DayawLandingScreenState extends State<DayawLandingScreen> {
       ),
     );
   }
-  
+
+  /// --- UI BUILDERS ---
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -157,13 +129,11 @@ class _DayawLandingScreenState extends State<DayawLandingScreen> {
             const SizedBox(height: 10),
             _buildHeader(),
             const SizedBox(height: 20),
-
-            // 1. MAIN DISPLAY AREA (Conditional)
             Expanded(
               child: Container(
                 margin: const EdgeInsets.symmetric(horizontal: 20),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFE0E0E0),
+                  color: const Color(0xFFF5F5F5), // Light gray background
                   borderRadius: BorderRadius.circular(15),
                 ),
                 clipBehavior: Clip.antiAlias,
@@ -172,41 +142,20 @@ class _DayawLandingScreenState extends State<DayawLandingScreen> {
                     : _buildImageView(),
               ),
             ),
-
             const SizedBox(height: 30),
-
-            // 2. BUTTON ROW (Hidden if in Text Mode to keep UI clean)
             if (selectedMode != 'Tagalog to Baybayin')
               Padding(
-  padding: const EdgeInsets.symmetric(horizontal: 30),
-  child: Row(
-    children: [
-      Expanded(
-        child: Align(
-          alignment: Alignment.centerLeft,
-          child: GestureDetector(
-            onTap: _uploadFromGallery,
-            child: _buildUploadWidget(),
-          ),
-        ),
-      ),
-
-      // ✅ CAMERA BUTTON (FIXED)
-      GestureDetector(
-  onTap: () {
-    print("📷 CAMERA BUTTON CLICKED"); // 👈 ADD THIS
-    _captureFromCamera();
-  },
-  child: _buildCameraWidget(),
-),
-      const Expanded(child: SizedBox()),
-    ],
-  ),
-),
-
+                padding: const EdgeInsets.symmetric(horizontal: 30),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    GestureDetector(onTap: _uploadFromGallery, child: _buildUploadWidget()),
+                    const SizedBox(width: 40),
+                    GestureDetector(onTap: _captureFromCamera, child: _buildCameraWidget()),
+                  ],
+                ),
+              ),
             const SizedBox(height: 30),
-
-            // 3. MODE SELECTOR
             _buildModeSelector(),
           ],
         ),
@@ -214,34 +163,19 @@ class _DayawLandingScreenState extends State<DayawLandingScreen> {
     );
   }
 
-  // Header Component
   Widget _buildHeader() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 10),
-      child: Stack(
-        alignment: Alignment.center,
+      padding: const EdgeInsets.symmetric(horizontal: 15),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Center(
-            child: Image.asset(
-              'assets/images/dayawlogo.png',
-              height: 60,
-              fit: BoxFit.contain,
-            ),
-          ),
-          Align(
-            alignment: Alignment.centerRight,
-            child: IconButton(
-              icon: const Icon(Icons.info_outline, color: Colors.brown),
-              onPressed: () {
-                showModalBottomSheet(
-                  context: context,
-                  isScrollControlled: true,
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: BorderRadius.vertical(top: Radius.circular(25)),
-                  ),
-                  builder: (context) => const InfoModal(),
-                );
-              },
+          const SizedBox(width: 40), // Placeholder to balance info icon
+          Image.asset('assets/images/dayawlogo.png', height: 50),
+          IconButton(
+            icon: const Icon(Icons.info_outline, color: Colors.brown),
+            onPressed: () => showModalBottomSheet(
+              context: context,
+              builder: (context) => const InfoModal(),
             ),
           ),
         ],
@@ -249,8 +183,14 @@ class _DayawLandingScreenState extends State<DayawLandingScreen> {
     );
   }
 
-  // View for Tagalog to Baybayin
   Widget _buildTextInputView() {
+    // Helper to change color based on confidence level
+    Color getConfidenceColor() {
+      if (_confidenceScore >= 95) return Colors.green;
+      if (_confidenceScore >= 75) return Colors.orange;
+      return Colors.red;
+    }
+
     return Padding(
       padding: const EdgeInsets.all(20),
       child: Column(
@@ -258,13 +198,15 @@ class _DayawLandingScreenState extends State<DayawLandingScreen> {
         children: [
           TextField(
             controller: _textController,
-            onChanged: (val) => _handleTextTranslation(val),
+            onChanged: _handleTextTranslation,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 18),
             decoration: InputDecoration(
               hintText: "I-type ang Tagalog dito...",
               filled: true,
               fillColor: Colors.white,
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide.none,
               ),
               suffixIcon: const Icon(Icons.translate, color: Colors.brown),
@@ -273,124 +215,105 @@ class _DayawLandingScreenState extends State<DayawLandingScreen> {
           const SizedBox(height: 40),
           if (_isLoading)
             const CircularProgressIndicator(color: Colors.brown)
-          else
+          else ...[
             Text(
               _translatedResult,
               textAlign: TextAlign.center,
               style: const TextStyle(
-                fontSize: 40, // Larger font for Baybayin characters
+                fontSize: 60,
                 color: Colors.brown,
-                fontWeight: FontWeight.bold,
+                fontFamily: 'Baybayin', 
               ),
             ),
-          const SizedBox(height: 10),
-          const Text("Baybayin Result", style: TextStyle(color: Colors.grey)),
+            
+            // COMPLETED: System Confidence Display
+            if (_translatedResult != "Result will appear here")
+              Padding(
+                padding: const EdgeInsets.only(top: 20),
+                child: Column(
+                  children: [
+                    Text(
+                      "${_confidenceScore.toInt()}%",
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        color: getConfidenceColor(),
+                      ),
+                    ),
+                    const Text(
+                      "System Confidence",
+                      style: TextStyle(color: Colors.grey, fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+          ],
         ],
       ),
     );
   }
 
-  // View for Baybayin to Tagalog (Image Upload)
   Widget _buildImageView() {
     return Stack(
       children: [
-        if (_webImage != null)
-          Positioned.fill(
-            child: Image.memory(_webImage!, fit: BoxFit.contain),
-          ),
-        Container(
-          color: _webImage != null ? Colors.black26 : Colors.transparent,
-          padding: const EdgeInsets.all(20),
-          child: Center(
-            child: _isLoading
-                ? const CircularProgressIndicator(color: Colors.white)
-                : Text(
-                    _translatedResult,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: _webImage != null ? Colors.white : Colors.black54,
-                    ),
+        if (_webImage != null) Positioned.fill(child: Image.memory(_webImage!, fit: BoxFit.contain)),
+        Center(
+          child: _isLoading
+              ? const CircularProgressIndicator(color: Colors.brown)
+              : Text(
+                  _translatedResult,
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: _webImage != null ? Colors.white : Colors.black54,
                   ),
-          ),
+                ),
         ),
       ],
     );
   }
 
-  Widget _buildCameraWidget() {
-    return Container(
-      height: 85, width: 85,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        shape: BoxShape.circle,
-        border: Border.all(color: Colors.black12, width: 2),
-      ),
-      child: Center(
-        child: Container(
-          height: 65, width: 65,
-          decoration: const BoxDecoration(
-            color: Color(0xFFF0F0F0),
-            shape: BoxShape.circle,
-          ),
-          child: const Icon(Icons.camera_alt, color: Colors.white, size: 35),
-        ),
-      ),
-    );
-  }
+  Widget _buildCameraWidget() => Container(
+    height: 75, width: 75,
+    decoration: const BoxDecoration(color: Colors.brown, shape: BoxShape.circle),
+    child: const Icon(Icons.camera_alt, color: Colors.white, size: 30),
+  );
 
-  Widget _buildUploadWidget() {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          height: 60, width: 60,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.black12, width: 2),
-          ),
-          child: const Icon(Icons.photo_library, size: 28, color: Colors.grey),
-        ),
-        const SizedBox(height: 4),
-        const Text("Upload", style: TextStyle(fontSize: 13, color: Colors.grey)),
-      ],
-    );
-  }
+  Widget _buildUploadWidget() => Column(
+    children: const [
+      Icon(Icons.photo_library, size: 30, color: Colors.grey),
+      Text("Gallery", style: TextStyle(fontSize: 12, color: Colors.grey)),
+    ],
+  );
 
   Widget _buildModeSelector() {
-    return Container(
-      color: const Color(0xFFF9F9F9),
-      padding: const EdgeInsets.symmetric(vertical: 20),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: translationModes.map((mode) {
-          bool isSelected = mode == selectedMode;
-          return GestureDetector(
-            onTap: () => setState(() {
-              selectedMode = mode;
-              _translatedResult = "Result will appear here";
-              _webImage = null;
-              _textController.clear();
-            }),
-            child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-              decoration: isSelected
-                  ? const BoxDecoration(
-                      border: Border(bottom: BorderSide(width: 2, color: Colors.brown)))
-                  : null,
-              child: Text(
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: translationModes.map((mode) {
+        bool isSelected = mode == selectedMode;
+        return GestureDetector(
+          onTap: () => setState(() {
+            selectedMode = mode;
+            _translatedResult = "Result will appear here";
+            _webImage = null;
+            _textController.clear();
+            _confidenceScore = 0.0;
+          }),
+          child: Column(
+            children: [
+              Text(
                 mode,
                 style: TextStyle(
-                  color: isSelected ? Colors.brown : Colors.black54,
+                  color: isSelected ? Colors.brown : Colors.grey,
                   fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                 ),
               ),
-            ),
-          );
-        }).toList(),
-      ),
+              if (isSelected)
+                Container(margin: const EdgeInsets.only(top: 4), height: 2, width: 40, color: Colors.brown),
+            ],
+          ),
+        );
+      }).toList(),
     );
   }
 }

@@ -6,9 +6,12 @@ import os
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from skimage.feature import hog
+from tagalog_to_baybayin import TagalogToBaybayin
 
 app = Flask(__name__)
 CORS(app)
+
+ttb_translator = TagalogToBaybayin()
 
 # --- 1. LOAD AI ASSETS ---
 # Ensure these .pkl files are in the same folder as this script!
@@ -76,125 +79,141 @@ def update_session_status(session_id, status):
 # --- 4. IMAGE PROCESSING ENGINE ---
 
 def preprocess_and_predict(image_bytes):
+    # Convert bytes to OpenCV image
     nparr = np.frombuffer(image_bytes, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     if img is None:
         return "Error", 0.0, []
 
-    # A. Pre-processing
+    # --- STEP A: PRE-PROCESSING (1.2x Zoom) ---
     img = cv2.resize(img, None, fx=1.2, fy=1.2, interpolation=cv2.INTER_CUBIC)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    
 
-    # B. Shadow Fixer & Binarization
+    # --- STEP B: SHADOW FIXER & BINARIZATION (21, 15) ---
     bg_img = cv2.medianBlur(gray, 51)
     normalized = cv2.divide(gray, bg_img, scale=255)
     binary = cv2.adaptiveThreshold(normalized, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
                                    cv2.THRESH_BINARY_INV, 21, 15)
 
-    # C. Cleaning
-    binary = cv2.medianBlur(binary, 3)
+    # --- STEP C: CLEANING (The "NA" & Gap Fix) ---
+    # Synced with Colab: 7x7 Morphological Closing to glue strokes together
+    kernel = np.ones((7,7), np.uint8) 
+    binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
+    binary = cv2.dilate(binary, kernel, iterations=1) 
+    binary = cv2.medianBlur(binary, 5)
 
-    # D. Line-Aware Segmentation
+    # --- STEP D: SEGMENTATION ---
     contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     
     raw_boxes = []
     for c in contours:
         x, y, w, h = cv2.boundingRect(c)
-        if w > 15 and h > 15:
+        # Filter noise fragments (Synced with Colab 40x40 threshold)
+        if w > 40 and h > 40:
             raw_boxes.append([x, y, w, h])
 
     if not raw_boxes:
         return "No characters detected", 0.0, []
 
-    raw_boxes.sort(key=lambda b: b[1])
+    # --- STEP E: MULTI-LINE & LEFT-TO-RIGHT SORTING (Centroid Math) ---
+    # Sort by Vertical Center: y + (h/2)
+    raw_boxes.sort(key=lambda b: b[1] + b[3]/2)
+
     lines = []
     curr_line = [raw_boxes[0]]
-    for box in raw_boxes[1:]:
-        if box[1] < curr_line[-1][1] + curr_line[-1][3] + 60:
-            curr_line.append(box)
+    line_threshold = 80 # Adjust based on how close your lines are written
+
+    for i in range(1, len(raw_boxes)):
+        prev_y_center = curr_line[-1][1] + curr_line[-1][3]/2
+        curr_y_center = raw_boxes[i][1] + raw_boxes[i][3]/2
+        
+        if abs(curr_y_center - prev_y_center) < line_threshold:
+            curr_line.append(raw_boxes[i])
         else:
-            curr_line.sort(key=lambda b: b[0])
+            curr_line.sort(key=lambda b: b[0]) # Sort finished line Left-to-Right
             lines.append(curr_line)
-            curr_line = [box]
+            curr_line = [raw_boxes[i]]
+            
     curr_line.sort(key=lambda b: b[0])
     lines.append(curr_line)
 
-    full_word = []
+    # --- STEP F: PREDICTION LOOP ---
+    full_sentence_text = []
     confidences = []
     detections = []
 
-    # E. Prediction Loop
-    for line_idx, line_boxes in enumerate(lines):
-        i = 0
-        while i < len(line_boxes):
-            curr = line_boxes[i]
-            
-            # --- FIX 1: Merge fragmented strokes (NGA is often split) ---
-            # Using 18px ensures the 'tail' of the NGA connects to the body
-            if i + 1 < len(line_boxes):
-                next_b = line_boxes[i+1]
-                if next_b[0] - (curr[0] + curr[2]) < 18: 
-                    nx, ny = min(curr[0], next_b[0]), min(curr[1], next_b[1])
-                    nw = max(curr[0] + curr[2], next_b[0] + next_b[2]) - nx
-                    nh = max(curr[1] + curr[3], next_b[1] + next_b[3]) - ny
-                    curr = [nx, ny, nw, nh]
-                    i += 1 
-
-            roi = binary[curr[1]:curr[1]+curr[3], curr[0]:curr[0]+curr[2]]
+    for line in lines:
+        line_chars = []
+        for box in line:
+            x, y, w, h = box
+            roi = binary[y:y+h, x:x+w]
             resized = cv2.resize(roi, (42, 42), interpolation=cv2.INTER_AREA)
 
+            # Feature Extraction
             fd = hog(resized, orientations=9, pixels_per_cell=(8, 8),
                      cells_per_block=(2, 2), visualize=False)
 
+            # SVM Prediction
             scaled_fd = scaler.transform(fd.reshape(1, -1))
             probs = model.predict_proba(scaled_fd)[0]
             best_idx = np.argmax(probs)
+            
             char = class_names[best_idx]
             conf = float(probs[best_idx])
 
-            # --- FIX 2: TARGETED THRESHOLD OVERRIDE ---
-            # We know your NGA is hitting ~27-29%. 
-            # We create a 'Rescue Zone' for NGA specifically.
-            
-            is_valid = False
-            if char == "NGA" and conf > 0.25: # Lowered gate for NGA
-                is_valid = True
-            elif conf > 0.32: # Keep original strict gate for everything else
-                is_valid = True
+            # Store results
+            line_chars.append(char)
+            confidences.append(conf)
+            detections.append({"char": char, "confidence": round(conf * 100, 2)})
+        
+        full_sentence_text.append("-".join(line_chars))
 
-            # --- FIX 3: THE "EI" SECOND CHANCE ---
-            # If the AI chose 'EI' with low confidence, but 'NGA' was the 2nd choice
-            if char == "EI" and conf < 0.35:
-                # Check if NGA is the second highest probability
-                sorted_indices = np.argsort(probs)
-                second_best_idx = sorted_indices[-2]
-                if class_names[second_best_idx] == "NGA":
-                    char = "NGA"
-                    conf = float(probs[second_best_idx])
-                    is_valid = True if conf > 0.25 else False
-
-            if is_valid:
-                full_word.append(char)
-                confidences.append(conf)
-                detections.append({"char": char, "confidence": round(conf * 100, 2)})
-            
-            i += 1
-
-    word_text = "-".join(full_word)
+    # Join lines with a space or newline for final output
+    word_text = " | ".join(full_sentence_text) 
     avg_conf = (np.mean(confidences) * 100) if confidences else 0
+    
     return word_text, round(avg_conf, 2), detections
 
-# --- 5. API ROUTES ---
+# --- NEW: LINGUISTIC SCORER FOR TTB ---
+def calculate_linguistic_confidence(text):
+    """
+    Calculates a 'Learning Score' based on traditional Baybayin rules.
+    - Foreign letters (C, F, J, Q, V, X, Z) are penalized.
+    - Modern 'R' is penalized (traditionally used 'D').
+    """
+    original_text = text.lower()
+    score = 100.0
+    
+    # 1. Identify Foreign Characters that don't exist in Baybayin
+    # Each foreign character reduces confidence by 15%
+    foreign_matches = re.findall(r'[cfjqzvx]', original_text)
+    score -= (len(foreign_matches) * 15)
+    
+    # 2. Check for 'R'
+    # Traditional Baybayin didn't have 'R'; it used the 'D' character (Ra/Da)
+    if 'r' in original_text:
+        score -= 5
+        
+    # Ensure score doesn't go below 0
+    return max(0.0, float(score))
+
+# --- 6. API ROUTES ---
 
 @app.route('/api/translate', methods=['POST'])
 def translate():
     session_id = start_processing_session(request.remote_addr)
     
-    # Get mode from Form Data (Flutter often uses this) or JSON
-    mode = request.form.get('mode') or (request.json.get('mode') if request.is_json else None)
-    
+    # Handle both Form Data (Mobile) and JSON (Web/Postman)
+    if request.is_json:
+        data = request.json
+        mode = data.get('mode')
+        input_text = data.get('text')
+    else:
+        mode = request.form.get('mode')
+        input_text = request.form.get('text')
+
     try:
+        # --- MODE 1: BAYBAYIN TO TAGALOG (OCR) ---
         if mode == 'Baybayin to Tagalog':
             if 'file' not in request.files:
                 update_session_status(session_id, 'No_File')
@@ -215,13 +234,32 @@ def translate():
                 "session_id": session_id
             })
 
-        # Placeholder for Tagalog to Baybayin logic
+        # --- MODE 2: TAGALOG TO BAYBAYIN (TTB Focus) ---
         elif mode == 'Tagalog to Baybayin':
-            return jsonify({"translated_text": "Feature coming soon", "status": "Success"})
+            if not input_text:
+                update_session_status(session_id, 'No_Text')
+                return jsonify({"error": "No text provided"}), 400
+            
+            # 1. Perform Transliteration 
+            # (Now correctly unpacking the tuple returned by the class)
+            translated_result, confidence = ttb_translator.translate(input_text)
+            
+            # 2. Determine status based on the confidence score calculated in the class
+            status = "Success" if confidence >= 80 else "Incompatible_Chars"
+            
+            update_session_status(session_id, status)
+            
+            return jsonify({
+                "translated_text": translated_result,
+                "confidence": confidence,
+                "status": status,
+                "session_id": session_id,
+                "is_native": confidence == 100.0
+            })
 
     except Exception as e:
         update_session_status(session_id, 'Error')
-        print(f"❌ Translate Route Error: {e}")
+        print(f"❌ Route Error: {e}")
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':

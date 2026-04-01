@@ -5,35 +5,43 @@ import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart';
 
 class ApiService {
-  // 💡 PRO-TIP: Ensure your Flask app is running on host='0.0.0.0'
-  // and your phone is on the same Wi-Fi as 192.168.254.101
-  static const String baseUrl = 'http://192.168.254.101:5000';
+  static const String baseUrl = 'http://192.168.254.115:5000';
 
-  /// --- MODE: Baybayin to Tagalog (Detailed for Evaluation Modal) ---
-  Future<Map<String, dynamic>?> uploadAndTranslateDetailed(XFile imageFile, String mode) async {
+  /// --- UNIVERSAL TRANSLATION METHOD ---
+  /// Handles both Baybayin to Tagalog (Image) and Tagalog to Baybayin (Text)
+  Future<Map<String, dynamic>?> uploadAndTranslateDetailed(
+    XFile? imageFile, 
+    String mode, 
+    {String? text} // Optional named parameter for TTB mode
+  ) async {
     try {
       var request = http.MultipartRequest('POST', Uri.parse('$baseUrl/api/translate'));
       
-      // 1. Get file extension dynamically
-      String extension = imageFile.path.split('.').last.toLowerCase();
-      if (extension != 'jpg' && extension != 'jpeg' && extension != 'png') {
-        extension = 'jpg'; // Default fallback
-      }
-
-      // 2. Read bytes and add to request
-      var bytes = await imageFile.readAsBytes();
-      request.files.add(http.MultipartFile.fromBytes(
-        'file',
-        bytes,
-        filename: 'upload.$extension',
-        contentType: MediaType('image', extension == 'png' ? 'png' : 'jpeg'),
-      ));
-
-      // 3. Add mode field
+      // 1. Add the Mode
       request.fields['mode'] = mode;
 
-      // 4. Send request with a 30-second timeout
-      // (Deeper ML models can take time to process on a local CPU)
+      // 2. Handle TAGALOG TO BAYBAYIN (Text Path)
+      if (mode == 'Tagalog to Baybayin' && text != null) {
+        request.fields['text'] = text;
+      } 
+      
+      // 3. Handle BAYBAYIN TO TAGALOG (Image Path)
+      else if (imageFile != null) {
+        String extension = imageFile.path.split('.').last.toLowerCase();
+        if (extension != 'jpg' && extension != 'jpeg' && extension != 'png') {
+          extension = 'jpg';
+        }
+
+        var bytes = await imageFile.readAsBytes();
+        request.files.add(http.MultipartFile.fromBytes(
+          'file',
+          bytes,
+          filename: 'upload.$extension',
+          contentType: MediaType('image', extension == 'png' ? 'png' : 'jpeg'),
+        ));
+      }
+
+      // 4. Send and Timeout
       var streamedResponse = await request.send().timeout(const Duration(seconds: 30));
       var response = await http.Response.fromStream(streamedResponse);
 
@@ -52,33 +60,13 @@ class ApiService {
     }
   }
 
-  /// --- MODE: Tagalog to Baybayin (Text-based) ---
+  /// --- HELPER: Legacy Text-only caller ---
   Future<String> translateTagalogToBaybayin(String tagalogText) async {
-    try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/api/translate'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-        },
-        body: jsonEncode({
-          'text': tagalogText,
-          'mode': 'Tagalog to Baybayin' 
-        }),
-      ).timeout(const Duration(seconds: 15));
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['translated_text'] ?? "Translation failed"; 
-      } 
-      return "Server Error: ${response.statusCode}";
-    } catch (e) {
-      print("Text Translation Error: $e");
-      return "Connection Error. Check Server.";
-    }
+    final data = await uploadAndTranslateDetailed(null, 'Tagalog to Baybayin', text: tagalogText);
+    return data?['translated_text'] ?? "Translation failed";
   }
 
-  /// Original Simple Method (Maintains compatibility with older UI calls)
+  /// --- HELPER: Legacy Image-only caller ---
   Future<String> uploadAndTranslate(XFile imageFile, String mode) async {
     final data = await uploadAndTranslateDetailed(imageFile, mode);
     return data?['translated_text'] ?? "No translation found";
