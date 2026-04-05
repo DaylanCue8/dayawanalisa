@@ -113,6 +113,8 @@ class _DayawLandingScreenState extends State<DayawLandingScreen> {
         detections: data['individual_detections'] ?? [],
         averageConfidence: (data['confidence'] as num).toDouble(),
         translatedText: data['translated_text'] ?? "",
+        // Pass the session_id from the API response to the modal
+        sessionId: data['session_id'] ?? 0,
       ),
     );
   }
@@ -221,7 +223,7 @@ class _DayawLandingScreenState extends State<DayawLandingScreen> {
               textAlign: TextAlign.center,
               style: const TextStyle(
                 fontSize: 60,
-                color: Colors.brown,
+                color: Color.fromARGB(255, 0, 0, 0),
                 fontFamily: 'Baybayin', 
               ),
             ),

@@ -1,74 +1,132 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://192.168.254.115:5000';
+  static const String _baseUrl = 'http://192.168.254.115:5000';
 
   /// --- UNIVERSAL TRANSLATION METHOD ---
-  /// Handles both Baybayin to Tagalog (Image) and Tagalog to Baybayin (Text)
   Future<Map<String, dynamic>?> uploadAndTranslateDetailed(
-    XFile? imageFile, 
-    String mode, 
-    {String? text} // Optional named parameter for TTB mode
-  ) async {
+    XFile? imageFile,
+    String mode, {
+    String? text,
+  }) async {
     try {
-      var request = http.MultipartRequest('POST', Uri.parse('$baseUrl/api/translate'));
-      
-      // 1. Add the Mode
+      final uri = Uri.parse('$_baseUrl/api/translate');
+      final request = http.MultipartRequest('POST', uri);
+
       request.fields['mode'] = mode;
 
-      // 2. Handle TAGALOG TO BAYBAYIN (Text Path)
       if (mode == 'Tagalog to Baybayin' && text != null) {
         request.fields['text'] = text;
-      } 
-      
-      // 3. Handle BAYBAYIN TO TAGALOG (Image Path)
-      else if (imageFile != null) {
-        String extension = imageFile.path.split('.').last.toLowerCase();
-        if (extension != 'jpg' && extension != 'jpeg' && extension != 'png') {
-          extension = 'jpg';
-        }
+      } else if (imageFile != null) {
+        final extension = imageFile.path.split('.').last.toLowerCase();
+        final bytes = await imageFile.readAsBytes();
 
-        var bytes = await imageFile.readAsBytes();
         request.files.add(http.MultipartFile.fromBytes(
           'file',
           bytes,
           filename: 'upload.$extension',
           contentType: MediaType('image', extension == 'png' ? 'png' : 'jpeg'),
         ));
+      } else {
+        print("❌ Error: No input data provided for mode: $mode");
+        return null;
       }
 
-      // 4. Send and Timeout
-      var streamedResponse = await request.send().timeout(const Duration(seconds: 30));
-      var response = await http.Response.fromStream(streamedResponse);
+      final streamedResponse =
+          await request.send().timeout(const Duration(seconds: 30));
+      final response = await http.Response.fromStream(streamedResponse);
+
+      print("===== TRANSLATE RESPONSE DEBUG =====");
+      print("Status Code: ${response.statusCode}");
+      print("Response Body: ${response.body}");
+      print("===== END TRANSLATE DEBUG =====");
 
       if (response.statusCode == 200) {
         return jsonDecode(response.body) as Map<String, dynamic>;
       } else {
-        print("Server Error: ${response.statusCode} - ${response.body}");
+        print("❌ Server Error: ${response.statusCode} - ${response.body}");
         return null;
       }
-    } on SocketException catch (e) {
-      print("Network Error (Check IP/Wi-Fi): $e");
-      return null;
     } catch (e) {
-      print("General Error: $e");
+      print("❌ General Error in uploadAndTranslateDetailed: $e");
       return null;
     }
   }
 
-  /// --- HELPER: Legacy Text-only caller ---
-  Future<String> translateTagalogToBaybayin(String tagalogText) async {
-    final data = await uploadAndTranslateDetailed(null, 'Tagalog to Baybayin', text: tagalogText);
-    return data?['translated_text'] ?? "Translation failed";
+  /// --- BULK ARCHIVAL METHOD (FIXED) ---
+  Future<bool> archiveBulkCharacters(
+  List<Map<String, dynamic>> eligibleDetections,
+  int sessionId,
+) async {
+  try {
+    print("===== FLUTTER ARCHIVE DEBUG =====");
+    print("Session ID: $sessionId");
+    print("Eligible Detections: $eligibleDetections");
+
+    final payload = {
+      "session_id": sessionId,
+      "detections": eligibleDetections.map((d) => {
+        "char": d['char']?.toString() ?? '',
+        "confidence": d['confidence'] ?? 0.0,
+        "is_eligible": d['is_eligible'] == true,
+        "temp_path": d['temp_path']?.toString() ?? '',
+      }).toList(),
+    };
+
+    print("Payload Sent: ${jsonEncode(payload)}");
+
+    final response = await http.post(
+      Uri.parse('$_baseUrl/api/archive_bulk'),
+      headers: {"Content-Type": "application/json"},
+      body: jsonEncode(payload),
+    ).timeout(const Duration(seconds: 15));
+
+    print("Archive Response Code: ${response.statusCode}");
+    print("Archive Response Body: ${response.body}");
+    print("===== END FLUTTER ARCHIVE DEBUG =====");
+
+    return response.statusCode == 200;
+  } catch (e) {
+    print("❌ Bulk Archival API Error: $e");
+    return false;
+  }
+}
+
+  /// --- LEGACY/SINGLE ARCHIVAL ---
+  Future<bool> archiveCharacter(String char, double confidence, int sessionId) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$_baseUrl/api/archive_character'),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "char": char,
+          "confidence": confidence,
+          "session_id": sessionId,
+        }),
+      ).timeout(const Duration(seconds: 10));
+
+      return response.statusCode == 200;
+    } catch (e) {
+      print("❌ Archival API Error: $e");
+      return false;
+    }
   }
 
-  /// --- HELPER: Legacy Image-only caller ---
+  /// --- HELPERS ---
+  Future<String> translateTagalogToBaybayin(String tagalogText) async {
+    final data = await uploadAndTranslateDetailed(
+      null,
+      'Tagalog to Baybayin',
+      text: tagalogText,
+    );
+    return data?['translated_text']?.toString() ?? "Translation failed";
+  }
+
   Future<String> uploadAndTranslate(XFile imageFile, String mode) async {
     final data = await uploadAndTranslateDetailed(imageFile, mode);
-    return data?['translated_text'] ?? "No translation found";
+    return data?['translated_text']?.toString() ?? "No translation found";
   }
 }
